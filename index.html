@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>prevent scrolling test</title>
+
+        <style>
+            body {
+                height: 200vh;
+                background: green;
+            }
+
+            #wrapper {
+                height: 50vh;
+                background: yellow;
+                overflow: auto;
+            }
+
+            #scrollable {
+                height: 100vh;
+                background: red;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="wrapper">
+            <div id="scrollable">
+            </div>
+        </div>
+
+        <script src="preventScroll.js"></script>
+    </body>
+</html>
