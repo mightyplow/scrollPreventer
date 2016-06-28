@@ -1,6 +1,4 @@
 (function () {
-    const getTouchTarget = e => e.targetTouches[0]
-
     const keycode = {
         UP: 38,
         RIGHT: 39,
@@ -8,42 +6,59 @@
         LEFT: 37
     }
 
-    self.preventScroll = (el, axis) => {
-        const getScrollPos = (axis) =>  axis === 'x' ? el.scrollLeft : el.scrollTop
-        const getScrollSize = (axis) => axis === 'x' ? el.scrollWidth : el.scrollHeight
-        const getOffsetSize = (axis) => axis === 'x' ? el.offsetWidth : el.offsetHeight
-        
-        const isScrollable = (el) => (axis, direction) => {
+    const preventedElements = new Map;
+
+    const getTouchTarget = e => e.targetTouches[0]  
+
+    const getWheelAxis = e => e.deltaX && 'x' || e.deltaY && 'y' || null
+    const getWheelDirection = e => e.deltaX || e.deltaY || 0
+
+    const getKeydownAxis = e => e.keyCode === keycode.LEFT || e.keyCode === keycode.RIGHT ? 'x' : 'y'
+    const getKeydownDirection = e => e.keyCode === keycode.LEFT || e.keyCode === keycode.UP ? -1 : 1
+
+    const getTouchMoveDirection = e => 0;
+
+    const createScrollPosGetter = el => axis =>  axis === 'x' ? el.scrollLeft : el.scrollTop
+    const createScrollSizeGetter = el => axis => axis === 'x' ? el.scrollWidth : el.scrollHeight
+    const createOffsetSizeGetter = el => axis => axis === 'x' ? el.offsetWidth : el.offsetHeight
+
+    const createScrollableChecker = (el) => {
+        const getScrollPos = createScrollPosGetter(el),
+              getOffsetSize = createOffsetSizeGetter(el),
+              getScrollSize = createScrollSizeGetter(el)
+
+        return (axis, direction) => {
             if (direction < 0) {
                 return getScrollPos(axis) > 0
             } else {
                 return (getScrollPos(axis) + getOffsetSize(axis)) < getScrollSize(axis)
             }
         }
+    }
 
-        const createTouchMoveHandler = (startX, startY) => (e) => {
-            const target = getTouchTarget(e)
-            const axis = 'y'
-            const direction = target.pageY > startY ? -1 : 1
+    self.preventScroll = (el, axis) => {
+        const isScrollable = createScrollableChecker(el)
 
-            if (!isScrollable(el)(axis, direction)) {
+        const createPreventionHandler = getDirection => e => {
+            if (!isScrollable(axis, getDirection(e))) {
                 e.preventDefault()
             }
         }
 
-        el.addEventListener('mousewheel', e => {
-            const axis = e.deltaX && 'x' || e.deltaY && 'y' || null;
+        const mouseWheelHandler = createPreventionHandler(getWheelDirection)
+        const keydownHandler = createPreventionHandler(getKeydownDirection)
+        const touchMoveHandler = createPreventionHandler(getTouchMoveDirection)
 
-            if (axis) {
-                const direction = e.deltaX || e.deltaY
+        const createTouchMoveHandler = (startX, startY) => (e) => {
+            const target = getTouchTarget(e),
+                  direction = target.pageY > startY ? -1 : 1
 
-                if (!isScrollable(el)(axis, direction)) {
-                    e.preventDefault()
-                }
+            if (!isScrollable(axis, direction)) {
+                e.preventDefault()
             }
-        })
+        }
 
-        el.addEventListener('touchstart', e => {
+        const touchStartHandler = e => {
             const target = getTouchTarget(e)
             const touchMoveHandler = createTouchMoveHandler(target.pageX, target.pageY)
 
@@ -52,17 +67,39 @@
                 el.removeEventListener('touchmove', touchMoveHandler)
                 el.removeEventListener('touchend', touchEndHandler)
             })
+        }
+
+        el.addEventListener('mousewheel', mouseWheelHandler)
+        el.addEventListener('touchstart', touchStartHandler)
+        el.addEventListener('keydown', keydownHandler)
+
+        // set html attributes and style to enable keyboard scroll handling
+        el.tabIndex = -1
+        el.style.outline = 'none'
+        el.focus()
+
+        preventedElements.set(el, {
+            mousewheel: mouseWheelHandler,
+            touchstart: touchStartHandler,
+            keydown: keydownHandler
         })
+    }
 
-        document.addEventListener('keydown', e => {
-            const axis = e.keyCode === keycode.LEFT || e.keyCode === keycode.RIGHT ? 'x' : 'y'
-            const direction = e.keyCode === keycode.LEFT || e.keyCode === keycode.UP ? -1 : 1
+    self.allowScroll = el => {
+        const handlers = preventedElements.get(el)
 
-            if (!isScrollable(el)(axis, direction)) {
-                e.preventDefault()
+        if (handlers) {
+            for (const eventType in handlers) {
+                if (handlers.hasOwnProperty(eventType)) {
+                    el.removeEventListener(eventType, handlers[eventType]);
+                }
             }
-        })
+        }
     }
 }());
 
 preventScroll(window.wrapper, 'y')
+
+document.onclick = el => {
+    allowScroll(window.wrapper)
+}

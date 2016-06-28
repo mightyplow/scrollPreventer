@@ -1,10 +1,6 @@
 'use strict';
 
 (function () {
-    var getTouchTarget = function getTouchTarget(e) {
-        return e.targetTouches[0];
-    };
-
     var keycode = {
         UP: 38,
         RIGHT: 39,
@@ -12,52 +8,87 @@
         LEFT: 37
     };
 
-    self.preventScroll = function (el, axis) {
-        var getScrollPos = function getScrollPos(axis) {
+    var preventedElements = new Map();
+
+    var getTouchTarget = function getTouchTarget(e) {
+        return e.targetTouches[0];
+    };
+
+    var getWheelAxis = function getWheelAxis(e) {
+        return e.deltaX && 'x' || e.deltaY && 'y' || null;
+    };
+    var getWheelDirection = function getWheelDirection(e) {
+        return e.deltaX || e.deltaY || 0;
+    };
+
+    var getKeydownAxis = function getKeydownAxis(e) {
+        return e.keyCode === keycode.LEFT || e.keyCode === keycode.RIGHT ? 'x' : 'y';
+    };
+    var getKeydownDirection = function getKeydownDirection(e) {
+        return e.keyCode === keycode.LEFT || e.keyCode === keycode.UP ? -1 : 1;
+    };
+
+    var getTouchMoveDirection = function getTouchMoveDirection(e) {
+        return 0;
+    };
+
+    var createScrollPosGetter = function createScrollPosGetter(el) {
+        return function (axis) {
             return axis === 'x' ? el.scrollLeft : el.scrollTop;
         };
-        var getScrollSize = function getScrollSize(axis) {
+    };
+    var createScrollSizeGetter = function createScrollSizeGetter(el) {
+        return function (axis) {
             return axis === 'x' ? el.scrollWidth : el.scrollHeight;
         };
-        var getOffsetSize = function getOffsetSize(axis) {
+    };
+    var createOffsetSizeGetter = function createOffsetSizeGetter(el) {
+        return function (axis) {
             return axis === 'x' ? el.offsetWidth : el.offsetHeight;
         };
+    };
 
-        var isScrollable = function isScrollable(el) {
-            return function (axis, direction) {
-                if (direction < 0) {
-                    return getScrollPos(axis) > 0;
-                } else {
-                    return getScrollPos(axis) + getOffsetSize(axis) < getScrollSize(axis);
+    var createScrollableChecker = function createScrollableChecker(el) {
+        var getScrollPos = createScrollPosGetter(el),
+            getOffsetSize = createOffsetSizeGetter(el),
+            getScrollSize = createScrollSizeGetter(el);
+
+        return function (axis, direction) {
+            if (direction < 0) {
+                return getScrollPos(axis) > 0;
+            } else {
+                return getScrollPos(axis) + getOffsetSize(axis) < getScrollSize(axis);
+            }
+        };
+    };
+
+    self.preventScroll = function (el, axis) {
+        var isScrollable = createScrollableChecker(el);
+
+        var createPreventionHandler = function createPreventionHandler(getDirection) {
+            return function (e) {
+                if (!isScrollable(axis, getDirection(e))) {
+                    e.preventDefault();
                 }
             };
         };
+
+        var mouseWheelHandler = createPreventionHandler(getWheelDirection);
+        var keydownHandler = createPreventionHandler(getKeydownDirection);
+        var touchMoveHandler = createPreventionHandler(getTouchMoveDirection);
 
         var createTouchMoveHandler = function createTouchMoveHandler(startX, startY) {
             return function (e) {
-                var target = getTouchTarget(e);
-                var axis = 'y';
-                var direction = target.pageY > startY ? -1 : 1;
+                var target = getTouchTarget(e),
+                    direction = target.pageY > startY ? -1 : 1;
 
-                if (!isScrollable(el)(axis, direction)) {
+                if (!isScrollable(axis, direction)) {
                     e.preventDefault();
                 }
             };
         };
 
-        el.addEventListener('mousewheel', function (e) {
-            var axis = e.deltaX && 'x' || e.deltaY && 'y' || null;
-
-            if (axis) {
-                var direction = e.deltaX || e.deltaY;
-
-                if (!isScrollable(el)(axis, direction)) {
-                    e.preventDefault();
-                }
-            }
-        });
-
-        el.addEventListener('touchstart', function (e) {
+        var touchStartHandler = function touchStartHandler(e) {
             var target = getTouchTarget(e);
             var touchMoveHandler = createTouchMoveHandler(target.pageX, target.pageY);
 
@@ -66,17 +97,39 @@
                 el.removeEventListener('touchmove', touchMoveHandler);
                 el.removeEventListener('touchend', touchEndHandler);
             });
+        };
+
+        el.addEventListener('mousewheel', mouseWheelHandler);
+        el.addEventListener('touchstart', touchStartHandler);
+        el.addEventListener('keydown', keydownHandler);
+
+        // set html attributes and style to enable keyboard scroll handling
+        el.tabIndex = -1;
+        el.style.outline = 'none';
+        el.focus();
+
+        preventedElements.set(el, {
+            mousewheel: mouseWheelHandler,
+            touchstart: touchStartHandler,
+            keydown: keydownHandler
         });
+    };
 
-        document.addEventListener('keydown', function (e) {
-            var axis = e.keyCode === keycode.LEFT || e.keyCode === keycode.RIGHT ? 'x' : 'y';
-            var direction = e.keyCode === keycode.LEFT || e.keyCode === keycode.UP ? -1 : 1;
+    self.allowScroll = function (el) {
+        var handlers = preventedElements.get(el);
 
-            if (!isScrollable(el)(axis, direction)) {
-                e.preventDefault();
+        if (handlers) {
+            for (var eventType in handlers) {
+                if (handlers.hasOwnProperty(eventType)) {
+                    el.removeEventListener(eventType, handlers[eventType]);
+                }
             }
-        });
+        }
     };
 })();
 
 preventScroll(window.wrapper, 'y');
+
+document.onclick = function (el) {
+    allowScroll(window.wrapper);
+};
