@@ -66,5 +66,3 @@
         }
     }
 }());
-
-const allowScroll = preventScroll(window.wrapper, 'y')

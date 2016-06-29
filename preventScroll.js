@@ -80,5 +80,3 @@
         };
     };
 })();
-
-var allowScroll = preventScroll(window.wrapper, 'y');
